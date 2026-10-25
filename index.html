@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Score Keeper</title>
+  <style>
+    :root {
+      --bg: #f6f5f1;
+      --card: #fff;
+      --ink: #1d1d1b;
+      --mute: #6b6a64;
+      --line: #d6d4cb;
+      --accent: #2f5d8a;
+      --accent-ink: #fff;
+      --pos: #1b7a43;
+      --neg: #b3261e;
+      color-scheme: light;
+      box-sizing: border-box;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #181816;
+        --card: #232321;
+        --ink: #eeede6;
+        --mute: #a09f95;
+        --line: #3a3a36;
+        --accent: #6fa3d6;
+        --accent-ink: #10202f;
+        --pos: #6fd49a;
+        --neg: #ff9a92;
+        color-scheme: dark;
+      }
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #181816;
+      --card: #232321;
+      --ink: #eeede6;
+      --mute: #a09f95;
+      --line: #3a3a36;
+      --accent: #6fa3d6;
+      --accent-ink: #10202f;
+      --pos: #6fd49a;
+      --neg: #ff9a92;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 20px 14px 40px;
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      margin: 0 0 4px;
+    }
+
+    .sub {
+      color: var(--mute);
+      margin: 0 0 18px;
+      font-size: 0.9rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--mute);
+      margin-bottom: 4px;
+    }
+
+    input {
+      width: 100%;
+      font: inherit;
+      font-size: 16px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 0;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    button {
+      font: inherit;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    .err {
+      color: var(--neg);
+      font-size: 0.9rem;
+      margin-top: 10px;
+      min-height: 1.2em;
+    }
+
+    .foot {
+      display: flex;
+      gap: 8px;
+      margin-top: 22px;
+      flex-wrap: wrap;
+    }
+
+    .fill {
+      flex: 1;
+    }
+
+    .logwrap {
+      overflow-x: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th,
+    td {
+      padding: 8px 4px;
+      text-align: center;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    th {
+      font-size: 0.8rem;
+      color: var(--mute);
+      font-weight: 600;
+    }
+
+    td.r {
+      color: var(--mute);
+    }
+
+    td .sc {
+      font-weight: 700;
+    }
+
+    td .sc.pos {
+      color: var(--pos);
+    }
+
+    td .sc.neg {
+      color: var(--neg);
+    }
+
+    td.s {
+      text-align: right;
+      padding-right: 3px;
+    }
+
+    td.i {
+      text-align: left;
+      padding-left: 0;
+      padding-right: 12px;
+      color: var(--mute);
+      font-size: 0.8rem;
+      font-weight: 400;
+    }
+
+    tr.entry td.s {
+      padding-right: 0;
+    }
+
+    .sp {
+      position: relative;
+      min-width: 4rem;
+      height: 30px;
+    }
+
+    .sp input {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 30px;
+      padding: 0 8px;
+      font-size: 16px;
+      text-align: right;
+      border-radius: 6px;
+      color: var(--ink);
+    }
+
+    td.i .ie {
+      height: 30px;
+    }
+
+    tr.entry td {
+      border-bottom: none;
+    }
+
+    tfoot td {
+      font-weight: 700;
+      border-top: 2px solid var(--accent);
+      border-bottom: none;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="setup" hidden>
+      <h1>New game</h1>
+      <p class="sub">Enter the four players’ names, in playing order.</p>
+      <div class="card">
+        <div class="field">
+          <label for="n0">Player 1</label>
+          <input id="n0" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="n1">Player 2</label>
+          <input id="n1" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="n2">Player 3</label>
+          <input id="n2" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="n3">Player 4</label>
+          <input id="n3" autocomplete="off">
+        </div>
+        <button class="primary" id="start">Start game</button>
+      </div>
+    </section>
+
+    <section id="game" hidden>
+      <h1 id="roundTitle">Round 1</h1>
+      <p class="sub">Format: number, plus E and M once each among the four. Example: 120M, 50E, 30, 40.</p>
+      <div class="card">
+        <div class="logwrap" id="logBody"></div>
+        <div class="err" id="err" role="alert"></div>
+      </div>
+      <div class="foot">
+        <button id="compute">Compute</button>
+        <span class="fill"></span>
+        <button id="undo">Undo last round</button>
+        <button id="reset">New game</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = 'scorekeeper-v1';
+      const PLAYER_INDEXES = [0, 1, 2, 3];
+      const VALID_FLAGS = ['', 'E', 'M', 'EM', 'ME'];
+      const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+
+      let state = loadState();
+      let resetArmed = false;
+      let resetTimer;
+
+      function $(id) {
+        return document.getElementById(id);
+      }
+
+      function loadState() {
+        let loaded = { players: [], rounds: [] };
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const isValid = parsed
+              && Array.isArray(parsed.players)
+              && parsed.players.length === 4
+              && Array.isArray(parsed.rounds);
+            if (isValid) loaded = parsed;
+          }
+        } catch (error) {}
+        loaded.rounds = loaded.rounds.map((round) => {
+          return Array.isArray(round) ? { inputs: null, scores: round } : round;
+        });
+        return loaded;
+      }
+
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (error) {}
+      }
+
+      function escapeHtml(text) {
+        return String(text).replace(/[&<>"]/g, (char) => HTML_ESCAPES[char]);
+      }
+
+      function parseValue(text) {
+        const cleaned = String(text).replace(/\s+/g, '').toUpperCase();
+        const match = /^(\d+)([EM]*)$/.exec(cleaned);
+        if (!match || !VALID_FLAGS.includes(match[2])) return null;
+        return {
+          number: parseInt(match[1], 10),
+          isE: match[2].includes('E'),
+          isM: match[2].includes('M'),
+        };
+      }
+
+      function computeRound(texts) {
+        const values = [];
+        for (let i = 0; i < 4; i++) {
+          const value = parseValue(texts[i]);
+          if (!value) {
+            return {
+              error: 'Invalid value for ' + state.players[i] + '. Use a whole number, optionally followed by E and/or M.',
+            };
+          }
+          values.push(value);
+        }
+
+        const eCount = values.filter((value) => value.isE).length;
+        const mCount = values.filter((value) => value.isM).length;
+        if (eCount !== 1 || mCount !== 1) {
+          return {
+            error: 'Exactly one E and exactly one M are required (found ' + eCount + ' E, ' + mCount + ' M).',
+          };
+        }
+
+        const mIndex = values.findIndex((value) => value.isM);
+        const eIndex = values.findIndex((value) => value.isE);
+        const mNumber = values[mIndex].number;
+        const scores = [0, 0, 0, 0];
+
+        for (let i = 0; i < 4; i++) {
+          if (i === mIndex) continue;
+          const payment = (mIndex === eIndex || i === eIndex) ? 2 * mNumber : mNumber;
+          scores[i] -= payment;
+          scores[mIndex] += payment;
+        }
+
+        for (let i = 0; i < 4; i++) {
+          for (let j = i + 1; j < 4; j++) {
+            if (i === mIndex || j === mIndex) continue;
+            let difference = Math.abs(values[i].number - values[j].number);
+            if (i === eIndex || j === eIndex) difference *= 2;
+            if (values[i].number > values[j].number) {
+              scores[j] -= difference;
+              scores[i] += difference;
+            } else if (values[j].number > values[i].number) {
+              scores[i] -= difference;
+              scores[j] += difference;
+            }
+          }
+        }
+
+        return { scores: scores };
+      }
+
+      function signClass(number) {
+        if (number > 0) return 'pos';
+        if (number < 0) return 'neg';
+        return '';
+      }
+
+      function formatScore(number) {
+        return number > 0 ? '+' + number : String(number);
+      }
+
+      function scoreCellHtml(score) {
+        return '<td class="s"><span class="sc ' + signClass(score) + '">' + formatScore(score) + '</span></td>';
+      }
+
+      function sumRounds() {
+        const totals = [0, 0, 0, 0];
+        state.rounds.forEach((round) => {
+          round.scores.forEach((score, player) => {
+            totals[player] += score;
+          });
+        });
+        return totals;
+      }
+
+      function headerRowHtml() {
+        const names = state.players.map((name) => '<th colspan="2">' + escapeHtml(name) + '</th>');
+        return '<tr><th>#</th>' + names.join('') + '</tr>';
+      }
+
+      function roundRowHtml(round, index) {
+        const cells = round.scores.map((score, player) => {
+          const typed = round.inputs ? '(' + escapeHtml(round.inputs[player]) + ')' : '';
+          return scoreCellHtml(score) + '<td class="i">' + typed + '</td>';
+        });
+        return '<tr><td class="r">' + (index + 1) + '</td>' + cells.join('') + '</tr>';
+      }
+
+      function entryRowHtml() {
+        const cells = state.players.map((name, player) => {
+          return '<td class="s">'
+            + '<div class="sp" id="sp' + player + '">'
+            + '<input id="v' + player + '" autocomplete="off" autocapitalize="characters" placeholder="0"'
+            + ' aria-label="Score for ' + escapeHtml(name) + '">'
+            + '</div>'
+            + '</td>'
+            + '<td class="i"><div class="ie" id="ie' + player + '"></div></td>';
+        });
+        return '<tr class="entry"><td class="r">' + (state.rounds.length + 1) + '</td>' + cells.join('') + '</tr>';
+      }
+
+      function totalRowHtml(totals) {
+        const cells = totals.map((total) => scoreCellHtml(total) + '<td class="i"></td>');
+        return '<tr><td>Total</td>' + cells.join('') + '</tr>';
+      }
+
+      function readInputs() {
+        return PLAYER_INDEXES.map((player) => {
+          const input = $('v' + player);
+          return input ? input.value : '';
+        });
+      }
+
+      function updateComputeButton() {
+        const isValid = !computeRound(readInputs()).error;
+        $('compute').classList.toggle('primary', isValid);
+      }
+
+      function layoutInputs() {
+        PLAYER_INDEXES.forEach((player) => {
+          const spacer = $('sp' + player);
+          const marker = $('ie' + player);
+          const input = $('v' + player);
+          if (!spacer || !marker || !input) return;
+          const width = marker.getBoundingClientRect().right - spacer.getBoundingClientRect().left;
+          input.style.width = Math.max(width, 0) + 'px';
+        });
+      }
+
+      function renderTable(clearInputs) {
+        const typedValues = PLAYER_INDEXES.map((player) => {
+          const input = $('v' + player);
+          return (clearInputs || !input) ? '' : input.value;
+        });
+
+        $('logBody').innerHTML = '<table>'
+          + '<thead>' + headerRowHtml() + '</thead>'
+          + '<tbody>' + state.rounds.map(roundRowHtml).join('') + entryRowHtml() + '</tbody>'
+          + '<tfoot>' + totalRowHtml(sumRounds()) + '</tfoot>'
+          + '</table>';
+
+        PLAYER_INDEXES.forEach((player) => {
+          const input = $('v' + player);
+          input.value = typedValues[player];
+          input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') submitRound();
+          });
+          input.addEventListener('input', () => {
+            $('err').textContent = '';
+            updateComputeButton();
+          });
+        });
+
+        $('roundTitle').textContent = 'Round ' + (state.rounds.length + 1);
+        $('undo').disabled = state.rounds.length === 0;
+        updateComputeButton();
+        layoutInputs();
+      }
+
+      function showView(view) {
+        $('setup').hidden = view !== 'setup';
+        $('game').hidden = view !== 'game';
+        if (view === 'game') layoutInputs();
+      }
+
+      function submitRound() {
+        const texts = readInputs();
+        const result = computeRound(texts);
+        if (result.error) {
+          $('err').textContent = result.error;
+          return;
+        }
+        $('err').textContent = '';
+        state.rounds.push({
+          inputs: texts.map((text) => text.replace(/\s+/g, '').toUpperCase()),
+          scores: result.scores,
+        });
+        saveState();
+        renderTable(true);
+        $('v0').focus();
+      }
+
+      function startGame() {
+        state = {
+          players: PLAYER_INDEXES.map((player) => $('n' + player).value.trim() || 'Player ' + (player + 1)),
+          rounds: [],
+        };
+        saveState();
+        $('err').textContent = '';
+        renderTable(true);
+        showView('game');
+        $('v0').focus();
+      }
+
+      function undoLastRound() {
+        state.rounds.pop();
+        saveState();
+        $('err').textContent = '';
+        renderTable(false);
+      }
+
+      function newGame() {
+        if (!resetArmed) {
+          resetArmed = true;
+          $('reset').textContent = 'Click again to confirm';
+          resetTimer = setTimeout(() => {
+            resetArmed = false;
+            $('reset').textContent = 'New game';
+          }, 3000);
+          return;
+        }
+
+        clearTimeout(resetTimer);
+        resetArmed = false;
+        $('reset').textContent = 'New game';
+        state = { players: [], rounds: [] };
+        saveState();
+        PLAYER_INDEXES.forEach((player) => {
+          $('n' + player).value = '';
+        });
+        showView('setup');
+        $('n0').focus();
+      }
+
+      function bindEvents() {
+        $('start').addEventListener('click', startGame);
+        $('compute').addEventListener('click', submitRound);
+        $('undo').addEventListener('click', undoLastRound);
+        $('reset').addEventListener('click', newGame);
+
+        PLAYER_INDEXES.forEach((player) => {
+          $('n' + player).addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            if (player < 3) {
+              $('n' + (player + 1)).focus();
+            } else {
+              $('start').click();
+            }
+          });
+        });
+
+        window.addEventListener('resize', layoutInputs);
+      }
+
+      bindEvents();
+
+      if (state.players.length === 4) {
+        renderTable(true);
+        showView('game');
+      } else {
+        showView('setup');
+      }
+    })();
+  </script>
+</body>
+</html>

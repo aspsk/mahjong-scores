@@ -66,6 +66,10 @@
       padding: 20px 14px 40px;
     }
 
+    main.wide {
+      max-width: 740px;
+    }
+
     h1 {
       font-size: 1.3rem;
       margin: 0 0 4px;
@@ -243,7 +247,7 @@
   </style>
 </head>
 <body>
-  <main>
+  <main id="app">
     <section id="setup" hidden>
       <h1>New game</h1>
       <p class="sub">Enter the four players’ names, in playing order.</p>
@@ -264,13 +268,17 @@
           <label for="n3">Player 4</label>
           <input id="n3" autocomplete="off">
         </div>
+        <div class="field">
+          <label for="n4">Player 5 (optional)</label>
+          <input id="n4" autocomplete="off">
+        </div>
         <button class="primary" id="start">Start game</button>
       </div>
     </section>
 
     <section id="game" hidden>
       <h1 id="roundTitle">Round 1</h1>
-      <p class="sub">Format: number, plus E and M once each among the four. Example: 120M, 50E, 30, 40.</p>
+      <p class="sub" id="hint">Format: number, plus E and M once each among the four. Example: 120M, 50E, 30, 40.</p>
       <div class="card">
         <div class="logwrap" id="logBody"></div>
         <div class="err" id="err" role="alert"></div>
@@ -287,9 +295,14 @@
   <script>
     (function () {
       const STORAGE_KEY = 'scorekeeper-v1';
-      const PLAYER_INDEXES = [0, 1, 2, 3];
+      const MIN_PLAYERS = 4;
+      const MAX_PLAYERS = 5;
+      const SKIP_SYMBOL = '-';
       const VALID_FLAGS = ['', 'E', 'M', 'EM', 'ME'];
       const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+      const HINT_FOUR_PLAYERS = 'Format: number, plus E and M once each among the four. Example: 120M, 50E, 30, 40.';
+      const HINT_FIVE_PLAYERS = 'Format: number, plus E and M once each among the four who play, '
+        + 'and ' + SKIP_SYMBOL + ' for the one who sits out. Example: 120M, 50E, 30, 40, ' + SKIP_SYMBOL + '.';
 
       let state = loadState();
       let resetArmed = false;
@@ -297,6 +310,10 @@
 
       function $(id) {
         return document.getElementById(id);
+      }
+
+      function range(count) {
+        return Array.from({ length: count }, (unused, index) => index);
       }
 
       function loadState() {
@@ -307,7 +324,8 @@
             const parsed = JSON.parse(raw);
             const isValid = parsed
               && Array.isArray(parsed.players)
-              && parsed.players.length === 4
+              && parsed.players.length >= MIN_PLAYERS
+              && parsed.players.length <= MAX_PLAYERS
               && Array.isArray(parsed.rounds);
             if (isValid) loaded = parsed;
           }
@@ -328,51 +346,90 @@
         return String(text).replace(/[&<>"]/g, (char) => HTML_ESCAPES[char]);
       }
 
-      function parseValue(text) {
+      function normalizeText(text) {
         const cleaned = String(text).replace(/\s+/g, '').toUpperCase();
+        const startsWithNumber = /^\d/.test(cleaned);
+        return (startsWithNumber || cleaned === SKIP_SYMBOL) ? cleaned : '0' + cleaned;
+      }
+
+      function parseValue(text, allowSkip) {
+        const cleaned = normalizeText(text);
+        if (allowSkip && cleaned === SKIP_SYMBOL) {
+          return { number: 0, isE: false, isM: false, isSkipped: true };
+        }
         const match = /^(\d+)([EM]*)$/.exec(cleaned);
         if (!match || !VALID_FLAGS.includes(match[2])) return null;
         return {
           number: parseInt(match[1], 10),
           isE: match[2].includes('E'),
           isM: match[2].includes('M'),
+          isSkipped: false,
         };
       }
 
+      function describeSymbolProblems(eCount, mCount) {
+        const missing = [];
+        const repeated = [];
+        if (eCount === 0) missing.push('E');
+        if (mCount === 0) missing.push('M');
+        if (eCount > 1) repeated.push('E');
+        if (mCount > 1) repeated.push('M');
+
+        const messages = [];
+        if (missing.length === 1) messages.push(missing[0] + ' is missing.');
+        if (missing.length === 2) messages.push('E and M are missing.');
+        repeated.forEach((symbol) => messages.push('Only one ' + symbol + ' is allowed.'));
+        return messages.join(' ');
+      }
+
       function computeRound(texts) {
+        const playerCount = state.players.length;
+        const allowSkip = playerCount > MIN_PLAYERS;
+
         const values = [];
-        for (let i = 0; i < 4; i++) {
-          const value = parseValue(texts[i]);
+        for (let i = 0; i < playerCount; i++) {
+          const value = parseValue(texts[i], allowSkip);
           if (!value) {
+            const hint = allowSkip ? ', or ' + SKIP_SYMBOL + ' to skip the player.' : '.';
             return {
-              error: 'Invalid value for ' + state.players[i] + '. Use a whole number, optionally followed by E and/or M.',
+              error: 'Invalid value for ' + state.players[i] + '. Use a whole number, optionally followed by E and/or M' + hint,
             };
           }
           values.push(value);
+        }
+
+        const skipCount = values.filter((value) => value.isSkipped).length;
+        if (skipCount !== playerCount - MIN_PLAYERS) {
+          return {
+            error: 'Exactly one of five players must skip the round. Enter ' + SKIP_SYMBOL + ' to skip the player.',
+          };
         }
 
         const eCount = values.filter((value) => value.isE).length;
         const mCount = values.filter((value) => value.isM).length;
         if (eCount !== 1 || mCount !== 1) {
           return {
-            error: 'Exactly one E and exactly one M are required (found ' + eCount + ' E, ' + mCount + ' M).',
+            error: describeSymbolProblems(eCount, mCount),
           };
         }
 
+        const activePlayers = range(playerCount).filter((i) => !values[i].isSkipped);
         const mIndex = values.findIndex((value) => value.isM);
         const eIndex = values.findIndex((value) => value.isE);
         const mNumber = values[mIndex].number;
-        const scores = [0, 0, 0, 0];
+        const scores = values.map(() => 0);
 
-        for (let i = 0; i < 4; i++) {
-          if (i === mIndex) continue;
+        activePlayers.forEach((i) => {
+          if (i === mIndex) return;
           const payment = (mIndex === eIndex || i === eIndex) ? 2 * mNumber : mNumber;
           scores[i] -= payment;
           scores[mIndex] += payment;
-        }
+        });
 
-        for (let i = 0; i < 4; i++) {
-          for (let j = i + 1; j < 4; j++) {
+        for (let a = 0; a < activePlayers.length; a++) {
+          for (let b = a + 1; b < activePlayers.length; b++) {
+            const i = activePlayers[a];
+            const j = activePlayers[b];
             if (i === mIndex || j === mIndex) continue;
             let difference = Math.abs(values[i].number - values[j].number);
             if (i === eIndex || j === eIndex) difference *= 2;
@@ -404,7 +461,7 @@
       }
 
       function sumRounds() {
-        const totals = [0, 0, 0, 0];
+        const totals = state.players.map(() => 0);
         state.rounds.forEach((round) => {
           round.scores.forEach((score, player) => {
             totals[player] += score;
@@ -445,7 +502,7 @@
       }
 
       function readInputs() {
-        return PLAYER_INDEXES.map((player) => {
+        return range(state.players.length).map((player) => {
           const input = $('v' + player);
           return input ? input.value : '';
         });
@@ -457,7 +514,7 @@
       }
 
       function layoutInputs() {
-        PLAYER_INDEXES.forEach((player) => {
+        range(state.players.length).forEach((player) => {
           const spacer = $('sp' + player);
           const marker = $('ie' + player);
           const input = $('v' + player);
@@ -468,7 +525,7 @@
       }
 
       function renderTable(clearInputs) {
-        const typedValues = PLAYER_INDEXES.map((player) => {
+        const typedValues = range(state.players.length).map((player) => {
           const input = $('v' + player);
           return (clearInputs || !input) ? '' : input.value;
         });
@@ -479,7 +536,7 @@
           + '<tfoot>' + totalRowHtml(sumRounds()) + '</tfoot>'
           + '</table>';
 
-        PLAYER_INDEXES.forEach((player) => {
+        range(state.players.length).forEach((player) => {
           const input = $('v' + player);
           input.value = typedValues[player];
           input.addEventListener('keydown', (event) => {
@@ -492,6 +549,7 @@
         });
 
         $('roundTitle').textContent = 'Round ' + (state.rounds.length + 1);
+        $('hint').textContent = state.players.length > MIN_PLAYERS ? HINT_FIVE_PLAYERS : HINT_FOUR_PLAYERS;
         $('undo').disabled = state.rounds.length === 0;
         updateComputeButton();
         layoutInputs();
@@ -500,6 +558,7 @@
       function showView(view) {
         $('setup').hidden = view !== 'setup';
         $('game').hidden = view !== 'game';
+        $('app').classList.toggle('wide', view === 'game' && state.players.length > MIN_PLAYERS);
         if (view === 'game') layoutInputs();
       }
 
@@ -512,7 +571,7 @@
         }
         $('err').textContent = '';
         state.rounds.push({
-          inputs: texts.map((text) => text.replace(/\s+/g, '').toUpperCase()),
+          inputs: texts.map(normalizeText),
           scores: result.scores,
         });
         saveState();
@@ -521,10 +580,13 @@
       }
 
       function startGame() {
-        state = {
-          players: PLAYER_INDEXES.map((player) => $('n' + player).value.trim() || 'Player ' + (player + 1)),
-          rounds: [],
-        };
+        const names = range(MIN_PLAYERS).map((player) => {
+          return $('n' + player).value.trim() || 'Player ' + (player + 1);
+        });
+        const optionalName = $('n' + MIN_PLAYERS).value.trim();
+        if (optionalName) names.push(optionalName);
+
+        state = { players: names, rounds: [] };
         saveState();
         $('err').textContent = '';
         renderTable(true);
@@ -555,7 +617,7 @@
         $('reset').textContent = 'New game';
         state = { players: [], rounds: [] };
         saveState();
-        PLAYER_INDEXES.forEach((player) => {
+        range(MAX_PLAYERS).forEach((player) => {
           $('n' + player).value = '';
         });
         showView('setup');
@@ -568,10 +630,10 @@
         $('undo').addEventListener('click', undoLastRound);
         $('reset').addEventListener('click', newGame);
 
-        PLAYER_INDEXES.forEach((player) => {
+        range(MAX_PLAYERS).forEach((player) => {
           $('n' + player).addEventListener('keydown', (event) => {
             if (event.key !== 'Enter') return;
-            if (player < 3) {
+            if (player < MAX_PLAYERS - 1) {
               $('n' + (player + 1)).focus();
             } else {
               $('start').click();
@@ -584,7 +646,7 @@
 
       bindEvents();
 
-      if (state.players.length === 4) {
+      if (state.players.length >= MIN_PLAYERS) {
         renderTable(true);
         showView('game');
       } else {
